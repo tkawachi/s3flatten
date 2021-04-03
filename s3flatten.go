@@ -90,14 +90,29 @@ func copyObject(inCh <-chan string, outCh chan<- copyResult, client *s3.Client, 
 }
 
 func watchComplete(complete chan<- error, inCh <-chan string, outCh <-chan copyResult) {
-	defer close(complete)
+	startTime := time.Now()
+	cnt := 0
+	logStat := func() {
+		elapsed := time.Now().Sub(startTime)
+		// objects processed per second
+		speed := float32(cnt) / float32(elapsed/time.Second)
+		log.Printf("Copied %d items in %v, %.2f items/sec", cnt, elapsed, speed)
+	}
+	defer func() {
+		logStat()
+		close(complete)
+	}()
 	completed := make(map[string]bool)
 	inChClosed := false
 	isFinished := func() bool {
 		return inChClosed && len(completed) == 0
 	}
+	logTick := time.After(10 * time.Second)
 	for {
 		select {
+		case <-logTick:
+			logTick = time.After(10 * time.Second)
+			logStat()
 		case srcKey, ok := <-inCh:
 			if ok {
 				completed[srcKey] = false
@@ -114,6 +129,7 @@ func watchComplete(complete chan<- error, inCh <-chan string, outCh <-chan copyR
 				complete <- result.err
 				return
 			}
+			cnt++
 			if isFinished() {
 				complete <- nil
 				return
@@ -152,8 +168,6 @@ func main() {
 	debug("Destination path:", dstPath)
 	debug("Concurrency:", *cuncurrencyFlag)
 
-	startTime := time.Now()
-	targetCount := 0
 	ctx := context.Background()
 
 	cfg, err := config.LoadDefaultConfig(ctx)
@@ -187,7 +201,6 @@ func main() {
 			if strings.HasSuffix(*value.Key, *suffixFlag) {
 				watchInCh <- *value.Key
 				copyInCh <- *value.Key
-				targetCount++
 			}
 		}
 	}
@@ -197,8 +210,4 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	elapsed := time.Now().Sub(startTime)
-	// objects processed per second
-	speed := float32(targetCount) / float32(elapsed/time.Second)
-	log.Printf("Copied %d items in %v, %.2f items/sec", targetCount, elapsed, speed)
 }
