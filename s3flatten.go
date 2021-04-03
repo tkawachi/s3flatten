@@ -94,17 +94,7 @@ func watchComplete(complete chan<- error, inCh <-chan string, outCh <-chan copyR
 	completed := make(map[string]bool)
 	inChClosed := false
 	isFinished := func() bool {
-		if !inChClosed {
-			return false
-		}
-		hasIncompleted := false
-		for _, b := range completed {
-			if !b {
-				hasIncompleted = true
-				break
-			}
-		}
-		return !hasIncompleted
+		return inChClosed && len(completed) == 0
 	}
 	for {
 		select {
@@ -119,11 +109,11 @@ func watchComplete(complete chan<- error, inCh <-chan string, outCh <-chan copyR
 				}
 			}
 		case result := <-outCh:
+			delete(completed, result.srcKey)
 			if result.err != nil {
 				complete <- result.err
 				return
 			}
-			completed[result.srcKey] = true
 			if isFinished() {
 				complete <- nil
 				return
