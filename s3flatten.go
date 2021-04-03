@@ -136,7 +136,7 @@ func main() {
 	helpFlag := getopt.BoolLong("help", 'h', "display help")
 	delimiterFlag := getopt.StringLong("delimiter", 'd', "-", "Delimiter to replace '/' with to flatten path.")
 	suffixFlag := getopt.StringLong("suffix", 's', "", "Copy only objects which has this suffix in key")
-	parallelFlag := getopt.IntLong("concurrency", 'c', 1000, "Number of coroutine for COPY operation")
+	cuncurrencyFlag := getopt.IntLong("concurrency", 'c', 128, "Number of coroutine for COPY operation")
 	getopt.FlagLong(&verbose, "verbose", 'v', "verbose output")
 	getopt.SetParameters("s3://src-bucket/path/to/src/ s3://dest-bucket/path/to/dest/")
 	getopt.Parse()
@@ -153,10 +153,14 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if srcPath.bucket == dstPath.bucket && strings.HasPrefix(dstPath.prefix, srcPath.prefix) {
+		log.Fatal("Destination path must not be located under source path.")
+	}
 
 	debug("Delimiter:", *delimiterFlag)
 	debug("Source path:", srcPath)
 	debug("Destination path:", dstPath)
+	debug("Concurrency:", *cuncurrencyFlag)
 
 	startTime := time.Now()
 	targetCount := 0
@@ -174,7 +178,7 @@ func main() {
 	completeCh := make(chan error)
 
 	go watchComplete(completeCh, watchInCh, outCh)
-	for i := 0; i < *parallelFlag; i++ {
+	for i := 0; i < *cuncurrencyFlag; i++ {
 		go copyObject(copyInCh, outCh, client, srcPath, dstPath, *delimiterFlag)
 	}
 
