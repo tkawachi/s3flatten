@@ -98,6 +98,7 @@ func watchComplete(complete chan<- error, inCh <-chan string, outCh <-chan copyR
 		speed := float32(cnt) / float32(elapsed/time.Second)
 		log.Printf("Copied %d items in %v, %.2f items/sec", cnt, elapsed, speed)
 	}
+	logStatDuration := 10 * time.Second
 	defer func() {
 		logStat()
 		close(complete)
@@ -107,11 +108,11 @@ func watchComplete(complete chan<- error, inCh <-chan string, outCh <-chan copyR
 	isFinished := func() bool {
 		return inChClosed && len(completed) == 0
 	}
-	logTick := time.After(10 * time.Second)
+	logTick := time.After(logStatDuration)
 	for {
 		select {
 		case <-logTick:
-			logTick = time.After(10 * time.Second)
+			logTick = time.After(logStatDuration)
 			logStat()
 		case srcKey, ok := <-inCh:
 			if ok {
