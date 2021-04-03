@@ -8,7 +8,7 @@ is converted to `-` by default.
 s3flatten --suffix=.txt s3://my-source/path1/ s3://my-destination/path2/
 
 source path                      destination path
-s3://my-source/path1/            s3://my-destinatin/path2/
+s3://my-source/path1/            s3://my-destination/path2/
     foo.txt              --->         foo.txt
     bar.png
     abc/def.txt          --->         abc-def.txt
