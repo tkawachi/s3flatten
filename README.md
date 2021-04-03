@@ -20,7 +20,7 @@ s3://my-source/path1/            s3://my-destinatin/path2/
 ```
 Usage: s3flatten [-hv] [-c value] [-d value] [-s value] s3://src-bucket/path/to/src/ s3://dest-bucket/path/to/dest/
  -c, --concurrency=value
-                Number of coroutine for COPY operation [128]
+                Number of goroutine for COPY operation [128]
  -d, --delimiter=value
                 Delimiter to replace '/' with to flatten path. [-]
  -h, --help     display help

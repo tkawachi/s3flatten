@@ -142,7 +142,7 @@ func main() {
 	helpFlag := getopt.BoolLong("help", 'h', "display help")
 	delimiterFlag := getopt.StringLong("delimiter", 'd', "-", "Delimiter to replace '/' with to flatten path.")
 	suffixFlag := getopt.StringLong("suffix", 's', "", "Copy only objects which has this suffix in key")
-	cuncurrencyFlag := getopt.IntLong("concurrency", 'c', 128, "Number of coroutine for COPY operation")
+	cuncurrencyFlag := getopt.IntLong("concurrency", 'c', 128, "Number of goroutine for COPY operation")
 	getopt.FlagLong(&verbose, "verbose", 'v', "verbose output")
 	getopt.SetParameters("s3://src-bucket/path/to/src/ s3://dest-bucket/path/to/dest/")
 	getopt.Parse()
