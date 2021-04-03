@@ -1,11 +1,12 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/pborman/getopt/v2"
 )
 
@@ -23,15 +24,22 @@ func main() {
 
 	log.Println(args)
 
-	sess := session.Must(session.NewSession())
-	svc := s3.New(sess)
-
-	listInput := s3.ListObjectsInput{} // TODO specify bucket, prefix
-
-	err := svc.ListObjectsPages(&listInput, func(page *s3.ListObjectsOutput, isLast bool) bool {
-		return true
-	})
+	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
-		log.Fatal("Failed to list objects:", err)
+		log.Fatal(err)
+	}
+	client := s3.NewFromConfig(cfg)
+
+	listInput := s3.ListObjectsV2Input{} // TODO specify bucket, prefix
+	paginator := s3.NewListObjectsV2Paginator(client, &listInput)
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(context.TODO())
+		if err != nil {
+			log.Printf("error: %v", err)
+			return
+		}
+		for _, value := range page.Contents {
+			log.Println(*value.Key)
+		}
 	}
 }
