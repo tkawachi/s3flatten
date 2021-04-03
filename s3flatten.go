@@ -198,7 +198,7 @@ func main() {
 		log.Fatal(err)
 	}
 	elapsed := time.Now().Sub(startTime)
-	// objects processed per 10 seconds
+	// objects processed per second
 	speed := float32(targetCount) / float32(elapsed/time.Second)
 	log.Printf("Copied %d items in %v, %.2f items/sec", targetCount, elapsed, speed)
 }
