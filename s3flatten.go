@@ -81,11 +81,10 @@ func copyObject(inCh <-chan string, outCh chan<- copyResult, client *s3.Client, 
 		debug("Starting copy:", srcKey)
 		startTime := time.Now()
 		_, err = client.CopyObject(context.Background(), input)
-		if err != nil {
-			outCh <- copyResult{srcKey, err}
+		outCh <- copyResult{srcKey, err}
+		if err == nil {
+			debug("Finished copy:", srcKey, time.Now().Sub(startTime))
 		}
-		debug("Finished copy:", srcKey, time.Now().Sub(startTime))
-		outCh <- copyResult{srcKey, nil}
 	}
 }
 
