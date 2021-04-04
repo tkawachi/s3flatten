@@ -9,10 +9,10 @@ s3flatten --suffix=.txt s3://my-source/path1/ s3://my-destination/path2/
 
 source path                      destination path
 s3://my-source/path1/            s3://my-destination/path2/
-    foo.txt              --->         foo.txt
+    foo.txt            --COPY->         foo.txt
     bar.png
-    abc/def.txt          --->         abc-def.txt
-    abc/def/ghi.txt      --->         abc-def-ghi.txt
+    abc/def.txt        --COPY->         abc-def.txt
+    abc/def/ghi.txt    --COPY->         abc-def-ghi.txt
 ```
 
 ## Usage
