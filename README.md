@@ -30,9 +30,3 @@ Usage: s3flatten [-hv] [-c value] [-d value] [-s value] s3://src-bucket/path/to/
                 Copy only objects which has this suffix in key
  -v, --verbose  verbose output
 ```
-
-## Notes
-
-If you get the following error, specify the region of the source bucket in `AWS_REGION` environment variable.
-
-> 2021/04/04 10:20:51 operation error S3: ListObjectsV2, https response error StatusCode: 301, RequestID: 00000000000000, HostID: buQzm/exF9GqDm+xkQLy2ID1gmyXO4rvAC4pez4387c/KopGjV8pt/iBbdUAnAABWZKC8fjX2qg=, api error PermanentRedirect: The bucket you are attempting to access must be addressed using the specified endpoint. Please send all future requests to this endpoint.
