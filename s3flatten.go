@@ -170,6 +170,35 @@ func watchComplete(listedCh <-chan string, copyOutCh <-chan copyResult) error {
 	}
 }
 
+func getBucketRegion(ctx context.Context, client *s3.Client, bucket string) (string, error) {
+	region, err := manager.GetBucketRegion(ctx, client, bucket)
+	if err != nil {
+		var bnf manager.BucketNotFound
+		if errors.As(err, &bnf) {
+			return "", fmt.Errorf("unable to find bucket's region: %s", bucket)
+		} else {
+			return "", err
+		}
+	}
+	debug("Source bucket's region:", region)
+	return region, nil
+}
+
+func createS3Client(ctx context.Context, srcBucket string) (*s3.Client, error) {
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	client := s3.NewFromConfig(cfg)
+	srcRegion, err := getBucketRegion(ctx, client, srcBucket)
+	if err != nil {
+		return nil, err
+	}
+	// re-create S3 client with source bucket's region
+	cfg.Region = srcRegion
+	return s3.NewFromConfig(cfg), nil
+}
+
 func main() {
 	helpFlag := getopt.BoolLong("help", 'h', "display help")
 	delimiterFlag := getopt.StringLong("delimiter", 'd', "-", "Delimiter to replace '/' with to flatten path.")
@@ -202,24 +231,10 @@ func main() {
 
 	ctx := context.Background()
 
-	cfg, err := config.LoadDefaultConfig(ctx)
+	client, err := createS3Client(ctx, srcPath.bucket)
 	if err != nil {
 		log.Fatal(err)
 	}
-	client := s3.NewFromConfig(cfg)
-	srcRegion, err := manager.GetBucketRegion(ctx, client, srcPath.bucket)
-	if err != nil {
-		var bnf manager.BucketNotFound
-		if errors.As(err, &bnf) {
-			log.Fatal("unable to find bucket's region:", srcPath.bucket)
-		} else {
-			log.Fatal("error:", err)
-		}
-	}
-	debug("Source bucket's region:", srcRegion)
-	// re-create S3 client with source bucket's region
-	cfg.Region = srcRegion
-	client = s3.NewFromConfig(cfg)
 
 	//
 	// listObjects() --listedCh--+--listedCh1-------------------> watchComplete()
