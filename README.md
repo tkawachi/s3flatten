@@ -17,6 +17,10 @@ s3://my-source/path1/            s3://my-destination/path2/
     abc/def/ghi.txt    --COPY->         abc-def-ghi.txt
 ```
 
+The source bucket and destination bucket can be the same.
+If the source bucket and destination bucket are the same, the destination key prefix must
+not be under the source key prefix.
+
 ## Usage
 
 ```
