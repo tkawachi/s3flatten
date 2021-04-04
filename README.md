@@ -1,5 +1,7 @@
 # s3flatten
 
+[![Maintainability](https://api.codeclimate.com/v1/badges/9d4f7d8030936a8c0ce3/maintainability)](https://codeclimate.com/github/tkawachi/s3flatten/maintainability)
+
 s3flatten copies a set of files in a nested directory on S3 to a flat directory.
 In the destination directory, `/`, which is used as the delimiter of the directory,
 is converted to `-` by default.
