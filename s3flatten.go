@@ -28,6 +28,26 @@ type copyResult struct {
 	err    error
 }
 
+func fanOut(input <-chan string) (<-chan string, <-chan string) {
+	out1 := make(chan string)
+	out2 := make(chan string)
+	go func() {
+		for {
+			s, ok := <-input
+			if ok {
+				out1 <- s
+				out2 <- s
+			} else {
+				// input is closed
+				close(out1)
+				close(out2)
+				break
+			}
+		}
+	}()
+	return out1, out2
+}
+
 func debug(v ...interface{}) {
 	if verbose {
 		log.Println(v...)
@@ -62,6 +82,27 @@ func genDstKey(srcKey, srcKeyPrefix, dstKeyPrefix, delimiter string) (string, er
 	return (dstKeyPrefix + strings.Replace(srcKey[len(srcKeyPrefix):], "/", delimiter, -1)), nil
 }
 
+func listObjects(ctx context.Context, client *s3.Client, srcPath *s3Path, suffix string, listedCh chan<- string) {
+	defer close(listedCh)
+	listInput := s3.ListObjectsV2Input{
+		Bucket: aws.String(srcPath.bucket),
+		Prefix: aws.String(srcPath.prefix),
+	}
+	paginator := s3.NewListObjectsV2Paginator(client, &listInput)
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			log.Printf("error: %v", err)
+			return
+		}
+		for _, value := range page.Contents {
+			if strings.HasSuffix(*value.Key, suffix) {
+				listedCh <- *value.Key
+			}
+		}
+	}
+}
+
 func copyObject(inCh <-chan string, outCh chan<- copyResult, client *s3.Client, srcPath, dstPath *s3Path, delimiter string) {
 	for {
 		srcKey, ok := <-inCh
@@ -81,58 +122,50 @@ func copyObject(inCh <-chan string, outCh chan<- copyResult, client *s3.Client, 
 		debug("Starting copy:", srcKey)
 		startTime := time.Now()
 		_, err = client.CopyObject(context.Background(), input)
-		outCh <- copyResult{srcKey, err}
 		if err == nil {
 			debug("Finished copy:", srcKey, time.Now().Sub(startTime))
 		}
+		outCh <- copyResult{srcKey, err}
 	}
 }
 
-func watchComplete(complete chan<- error, inCh <-chan string, outCh <-chan copyResult) {
+func watchComplete(listedCh <-chan string, copyOutCh <-chan copyResult) error {
 	startTime := time.Now()
 	cnt := 0
 	logStat := func() {
 		elapsed := time.Now().Sub(startTime)
 		// objects processed per second
-		speed := float32(cnt) / float32(elapsed/time.Second)
+		speed := float32(cnt) * 1000 / float32(elapsed/time.Millisecond)
 		log.Printf("Copied %d items in %v, %.2f items/sec", cnt, elapsed, speed)
 	}
-	logStatDuration := 10 * time.Second
-	defer func() {
-		logStat()
-		close(complete)
-	}()
+	defer logStat()
 	completed := make(map[string]bool)
-	inChClosed := false
+	listedChClosed := false
 	isFinished := func() bool {
-		return inChClosed && len(completed) == 0
+		return listedChClosed && len(completed) == 0
 	}
-	logTick := time.After(logStatDuration)
+	logTick := time.NewTicker(10 * time.Second)
 	for {
 		select {
-		case <-logTick:
-			logTick = time.After(logStatDuration)
+		case <-logTick.C:
 			logStat()
-		case srcKey, ok := <-inCh:
+		case srcKey, ok := <-listedCh:
 			if ok {
 				completed[srcKey] = false
 			} else {
-				inChClosed = true
+				listedChClosed = true
 				if isFinished() {
-					complete <- nil
-					return
+					return nil
 				}
 			}
-		case result := <-outCh:
+		case result := <-copyOutCh:
 			delete(completed, result.srcKey)
 			if result.err != nil {
-				complete <- result.err
-				return
+				return result.err
 			}
 			cnt++
 			if isFinished() {
-				complete <- nil
-				return
+				return nil
 			}
 		}
 	}
@@ -176,37 +209,17 @@ func main() {
 	}
 	client := s3.NewFromConfig(cfg)
 
-	watchInCh := make(chan string)
-	copyInCh := make(chan string)
-	outCh := make(chan copyResult)
-	completeCh := make(chan error)
+	copyOutCh := make(chan copyResult)
+	listedCh := make(chan string, 1000) // Buffer to read a page ahead
+	listedCh1, listedCh2 := fanOut(listedCh)
 
-	go watchComplete(completeCh, watchInCh, outCh)
+	go listObjects(ctx, client, srcPath, *suffixFlag, listedCh)
+
 	for i := 0; i < *cuncurrencyFlag; i++ {
-		go copyObject(copyInCh, outCh, client, srcPath, dstPath, *delimiterFlag)
+		go copyObject(listedCh2, copyOutCh, client, srcPath, dstPath, *delimiterFlag)
 	}
 
-	listInput := s3.ListObjectsV2Input{
-		Bucket: aws.String(srcPath.bucket),
-		Prefix: aws.String(srcPath.prefix),
-	}
-	paginator := s3.NewListObjectsV2Paginator(client, &listInput)
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			log.Printf("error: %v", err)
-			return
-		}
-		for _, value := range page.Contents {
-			if strings.HasSuffix(*value.Key, *suffixFlag) {
-				watchInCh <- *value.Key
-				copyInCh <- *value.Key
-			}
-		}
-	}
-	close(watchInCh)
-	close(copyInCh)
-	err = <-completeCh
+	err = watchComplete(listedCh1, copyOutCh)
 	if err != nil {
 		log.Fatal(err)
 	}
