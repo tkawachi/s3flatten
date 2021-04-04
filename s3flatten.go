@@ -66,9 +66,7 @@ func parseS3Path(s string) (*s3Path, error) {
 	if !strings.HasSuffix(prefix, "/") {
 		prefix += "/"
 	}
-	if strings.HasPrefix(prefix, "/") {
-		prefix = prefix[1:]
-	}
+	prefix = strings.TrimPrefix(prefix, "/")
 	return &s3Path{
 		bucket: u.Host,
 		prefix: prefix,
@@ -122,7 +120,7 @@ func copyObject(inCh <-chan string, outCh chan<- copyResult, client *s3.Client, 
 		startTime := time.Now()
 		_, err = client.CopyObject(context.Background(), input)
 		if err == nil {
-			debug("Finished copy:", srcKey, time.Now().Sub(startTime))
+			debug("Finished copy:", srcKey, time.Since(startTime))
 		}
 		outCh <- copyResult{srcKey, err}
 	}
@@ -132,7 +130,7 @@ func watchComplete(listedCh <-chan string, copyOutCh <-chan copyResult) error {
 	startTime := time.Now()
 	cnt := 0
 	logStat := func() {
-		elapsed := time.Now().Sub(startTime)
+		elapsed := time.Since(startTime)
 		// objects processed per second
 		speed := float32(cnt) * 1000 / float32(elapsed/time.Millisecond)
 		log.Printf("Copied %d items in %v, %.2f items/sec", cnt, elapsed, speed)
