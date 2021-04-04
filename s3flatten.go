@@ -92,8 +92,7 @@ func listObjects(ctx context.Context, client *s3.Client, srcPath *s3Path, suffix
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			log.Printf("error: %v", err)
-			return
+			log.Fatal(err)
 		}
 		for _, value := range page.Contents {
 			if strings.HasSuffix(*value.Key, suffix) {
