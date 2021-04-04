@@ -209,6 +209,12 @@ func main() {
 	}
 	client := s3.NewFromConfig(cfg)
 
+	//
+	// listObjects() --listedCh--+--listedCh1-------------------> watchComplete()
+	//                           |                                        ^
+	//                           |                                        |
+	//                           +--listedCh2--> copyObject() --copyOutCh-+
+	//
 	copyOutCh := make(chan copyResult)
 	listedCh := make(chan string, 1000) // Buffer to read a page ahead
 	listedCh1, listedCh2 := fanOut(listedCh)
