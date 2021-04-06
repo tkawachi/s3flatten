@@ -185,9 +185,8 @@ func getBucketRegion(ctx context.Context, client *s3.Client, bucket string) (str
 		var bnf manager.BucketNotFound
 		if errors.As(err, &bnf) {
 			return "", fmt.Errorf("unable to find bucket's region: %s", bucket)
-		} else {
-			return "", err
 		}
+		return "", err
 	}
 	debug("Source bucket's region:", region)
 	return region, nil
