@@ -30,6 +30,15 @@ type copyResult struct {
 	err    error
 }
 
+type s3Flatten struct {
+	client      *s3.Client
+	srcPath     *s3Path
+	dstPath     *s3Path
+	delimiter   string
+	suffix      string
+	concurrency int
+}
+
 func fanOut(input <-chan string) (<-chan string, <-chan string) {
 	out1 := make(chan string)
 	out2 := make(chan string)
@@ -82,45 +91,45 @@ func genDstKey(srcKey, srcKeyPrefix, dstKeyPrefix, delimiter string) (string, er
 	return (dstKeyPrefix + strings.Replace(srcKey[len(srcKeyPrefix):], "/", delimiter, -1)), nil
 }
 
-func listObjects(ctx context.Context, client *s3.Client, srcPath *s3Path, suffix string, listedCh chan<- string) {
+func (sf *s3Flatten) listObjects(ctx context.Context, listedCh chan<- string) {
 	defer close(listedCh)
 	listInput := s3.ListObjectsV2Input{
-		Bucket: aws.String(srcPath.bucket),
-		Prefix: aws.String(srcPath.prefix),
+		Bucket: aws.String(sf.srcPath.bucket),
+		Prefix: aws.String(sf.srcPath.prefix),
 	}
-	paginator := s3.NewListObjectsV2Paginator(client, &listInput)
+	paginator := s3.NewListObjectsV2Paginator(sf.client, &listInput)
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
 			log.Fatal(err)
 		}
 		for _, value := range page.Contents {
-			if strings.HasSuffix(*value.Key, suffix) {
+			if strings.HasSuffix(*value.Key, sf.suffix) {
 				listedCh <- *value.Key
 			}
 		}
 	}
 }
 
-func copyObject(inCh <-chan string, outCh chan<- copyResult, client *s3.Client, srcPath, dstPath *s3Path, delimiter string) {
+func (sf *s3Flatten) copyObject(inCh <-chan string, outCh chan<- copyResult) {
 	for {
 		srcKey, ok := <-inCh
 		if !ok {
 			return
 		}
-		dstKey, err := genDstKey(srcKey, srcPath.prefix, dstPath.prefix, delimiter)
+		dstKey, err := genDstKey(srcKey, sf.srcPath.prefix, sf.dstPath.prefix, sf.delimiter)
 		if err != nil {
 			outCh <- copyResult{srcKey, err}
 			continue
 		}
 		input := &s3.CopyObjectInput{
-			CopySource: aws.String(srcPath.bucket + "/" + srcKey),
-			Bucket:     aws.String(dstPath.bucket),
+			CopySource: aws.String(sf.srcPath.bucket + "/" + srcKey),
+			Bucket:     aws.String(sf.dstPath.bucket),
 			Key:        aws.String(dstKey),
 		}
 		debug("Starting copy:", srcKey)
 		startTime := time.Now()
-		_, err = client.CopyObject(context.Background(), input)
+		_, err = sf.client.CopyObject(context.Background(), input)
 		if err == nil {
 			debug("Finished copy:", srcKey, time.Since(startTime))
 		}
@@ -199,11 +208,11 @@ func createS3Client(ctx context.Context, srcBucket string) (*s3.Client, error) {
 	return s3.NewFromConfig(cfg), nil
 }
 
-func main() {
+func mustS3FlattenFromArgs(ctx context.Context) *s3Flatten {
 	helpFlag := getopt.BoolLong("help", 'h', "display help")
 	delimiterFlag := getopt.StringLong("delimiter", 'd', "-", "Delimiter to replace '/' with to flatten path.")
 	suffixFlag := getopt.StringLong("suffix", 's', "", "Copy only objects which has this suffix in key")
-	cuncurrencyFlag := getopt.IntLong("concurrency", 'c', 128, "Number of goroutine for COPY operation")
+	concurrencyFlag := getopt.IntLong("concurrency", 'c', 128, "Number of goroutine for COPY operation")
 	getopt.FlagLong(&verbose, "verbose", 'v', "verbose output")
 	getopt.SetParameters("s3://src-bucket/path/to/src/ s3://dest-bucket/path/to/dest/")
 	getopt.Parse()
@@ -227,15 +236,26 @@ func main() {
 	debug("Delimiter:", *delimiterFlag)
 	debug("Source path:", srcPath)
 	debug("Destination path:", dstPath)
-	debug("Concurrency:", *cuncurrencyFlag)
-
-	ctx := context.Background()
+	debug("Concurrency:", *concurrencyFlag)
 
 	client, err := createS3Client(ctx, srcPath.bucket)
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	return &s3Flatten{
+		client:      client,
+		srcPath:     srcPath,
+		dstPath:     dstPath,
+		delimiter:   *delimiterFlag,
+		suffix:      *suffixFlag,
+		concurrency: *concurrencyFlag,
+	}
+}
+
+func main() {
+	ctx := context.Background()
+	sf := mustS3FlattenFromArgs(ctx)
 	//
 	// listObjects() --listedCh--+--listedCh1-------------------> watchComplete()
 	//                           |                                        ^
@@ -246,13 +266,13 @@ func main() {
 	listedCh := make(chan string, 1000) // Buffer to read a page ahead
 	listedCh1, listedCh2 := fanOut(listedCh)
 
-	go listObjects(ctx, client, srcPath, *suffixFlag, listedCh)
+	go sf.listObjects(ctx, listedCh)
 
-	for i := 0; i < *cuncurrencyFlag; i++ {
-		go copyObject(listedCh2, copyOutCh, client, srcPath, dstPath, *delimiterFlag)
+	for i := 0; i < sf.concurrency; i++ {
+		go sf.copyObject(listedCh2, copyOutCh)
 	}
 
-	err = watchComplete(listedCh1, copyOutCh)
+	err := watchComplete(listedCh1, copyOutCh)
 	if err != nil {
 		log.Fatal(err)
 	}
