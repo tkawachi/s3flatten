@@ -197,6 +197,11 @@ func createS3Client(ctx context.Context, srcBucket string) (*s3.Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	// If there is no region in the configuration, set region so that the HEAD request
+	// of GetBucketRegion() will not fail.
+	if cfg.Region == "" {
+		cfg.Region = "us-east-1"
+	}
 	client := s3.NewFromConfig(cfg)
 	srcRegion, err := getBucketRegion(ctx, client, srcBucket)
 	if err != nil {
