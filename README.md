@@ -24,13 +24,14 @@ not be under the source key prefix.
 ## Usage
 
 ```
-Usage: s3flatten [-hv] [-c value] [-d value] [-s value] s3://src-bucket/path/to/src/ s3://dest-bucket/path/to/dest/
+Usage: s3flatten [-hv] [-c value] [-d value] [-r value] [-s value] s3://src-bucket/path/to/src/ s3://dest-bucket/path/to/dest/
  -c, --concurrency=value
-                Number of goroutine for COPY operation [128]
+                    Number of goroutine for COPY operation [128]
  -d, --delimiter=value
-                Delimiter to replace '/' with to flatten path. [-]
- -h, --help     display help
+                    Delimiter to replace '/' with to flatten path. [-]
+ -h, --help         display help
+ -r, --retry=value  Maximum number of retry for S3 operation [3]
  -s, --suffix=value
-                Copy only objects which has this suffix in key
- -v, --verbose  verbose output
+                    Copy only objects which has this suffix in key
+ -v, --verbose      verbose output
 ```
