@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/retry"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
@@ -68,10 +69,10 @@ func debug(v ...interface{}) {
 func parseS3Path(s string) (*s3Path, error) {
 	u, err := url.Parse(s)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to parse as S3 path: %s", s)
+		return nil, fmt.Errorf("failed to parse as S3 path: %s", s)
 	}
 	if u.Scheme != "s3" {
-		return nil, fmt.Errorf("S3 path should start with `s3`: %s", s)
+		return nil, fmt.Errorf("s3 path should start with `s3://`: %s", s)
 	}
 	prefix := u.Path
 	if !strings.HasSuffix(prefix, "/") {
@@ -192,8 +193,11 @@ func getBucketRegion(ctx context.Context, client *s3.Client, bucket string) (str
 	return region, nil
 }
 
-func createS3Client(ctx context.Context, srcBucket string) (*s3.Client, error) {
-	cfg, err := config.LoadDefaultConfig(ctx)
+func createS3Client(ctx context.Context, srcBucket string, maxRetry int) (*s3.Client, error) {
+	// ref. https://aws.github.io/aws-sdk-go-v2/docs/configuring-sdk/retries-timeouts/
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRetryer(func() aws.Retryer {
+		return retry.AddWithMaxAttempts(retry.NewStandard(), maxRetry+1)
+	}))
 	if err != nil {
 		return nil, err
 	}
@@ -217,6 +221,7 @@ func mustS3FlattenFromArgs(ctx context.Context) *s3Flatten {
 	delimiterFlag := getopt.StringLong("delimiter", 'd', "-", "Delimiter to replace '/' with to flatten path.")
 	suffixFlag := getopt.StringLong("suffix", 's', "", "Copy only objects which has this suffix in key")
 	concurrencyFlag := getopt.IntLong("concurrency", 'c', 128, "Number of goroutine for COPY operation")
+	retryFlag := getopt.IntLong("retry", 'r', 3, "Maximum number of retry for S3 operation")
 	getopt.FlagLong(&verbose, "verbose", 'v', "verbose output")
 	getopt.SetParameters("s3://src-bucket/path/to/src/ s3://dest-bucket/path/to/dest/")
 	getopt.Parse()
@@ -242,7 +247,7 @@ func mustS3FlattenFromArgs(ctx context.Context) *s3Flatten {
 	debug("Destination path:", dstPath)
 	debug("Concurrency:", *concurrencyFlag)
 
-	client, err := createS3Client(ctx, srcPath.bucket)
+	client, err := createS3Client(ctx, srcPath.bucket, *retryFlag)
 	if err != nil {
 		log.Fatal(err)
 	}
